@@ -101,7 +101,7 @@ void updateMoonIllumination() {
   moonPhase moonPhaseInstance;
   time_t currentTime = timeClient.getEpochTime(); // Get the current timestamp
   moonData_t moon = moonPhaseInstance.getPhase(currentTime); // Pass the timestamp to the getPhase function
-  String moonIllumination = "Moon lit: " + String(moon.percentLit * 100, 1) + "%";
+  String moonIllumination = "Moon lit: " + String(moon.percentLit * 100, 2) + "%"; // Change the second argument to 2
 
   if (moonIllumination != prevMoonIllumination) {
     display.setTextColor(BLACK);
@@ -114,6 +114,7 @@ void updateMoonIllumination() {
     prevMoonIllumination = moonIllumination;
   }
 }
+
 
 void updateNextFullMoon() {
   moonPhase moonPhaseInstance;
