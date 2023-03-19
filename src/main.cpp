@@ -6,57 +6,57 @@
 #include <SPI.h>
 #include <moonPhase.h>
 
-#define SCLK 18
-#define MOSI 23
-#define CS   17
-#define RST  4
-#define DC   16
+#define sclk 18
+#define mosi 23
+#define cs   17
+#define rst  4
+#define dc   16
 
 // Color definitions
-const uint16_t RED                = 0xF800;
-const uint16_t GREEN              = 0x07E0;
-const uint16_t LESS_BRIGHT_CYAN   = 0x03FF;
-const uint16_t YELLOW             = 0xFFE0;
-const uint16_t BLACK              = 0x0000;
-const uint16_t PURPLE             = 0x780F;
+#define RED       0xF800
+#define GREEN     0x07E0
+#define LESS_BRIGHT_CYAN 0x03FF
+#define YELLOW    0xFFE0
+#define BLACK     0x0000
+#define PURPLE    0x780F
+String prevNextFullMoon = "";
 
-Adafruit_SSD1331 display(CS, DC, MOSI, SCLK, RST);
+Adafruit_SSD1331 display = Adafruit_SSD1331(cs, dc, mosi, sclk, rst);
 
-// WiFi network information
 const char* ssid = "KooZoo";
 const char* password = "katrinzrk";
 
-// Time sync via NTP
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
+
 unsigned long lastSyncTime = 0;
-const unsigned long SYNC_INTERVAL = 10 * 60 * 1000; // Sync interval (10 minutes)
+const unsigned long syncInterval = 600000; // Sync interval (10 minutes)
 
-// Display strings for clock, date, etc.
-String prevFormattedTime          = "";
-String prevFormattedDate          = "";
-String prevLastSync               = "";
-String prevMoonIllumination       = "";
-String prevNextFullMoon           = "";
+bool ntpSynced = false;
 
-// Array of days of the week
-const char* DAYS_OF_WEEK[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+String prevFormattedTime = "";
+String prevFormattedDate = "";
+String prevLastSync = "";
+String prevMoonIllumination = "";
 
-void initializeDisplay() {
+const char* daysOfWeek[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+void initDisplay() {
   display.begin();
   display.fillScreen(BLACK);
   display.setTextSize(1);
   display.setTextWrap(false);
 }
 
-String convertTwoDigitNumberToString(int number) {
-  return (number < 10 ? "0" : "") + String(number);
+String formatTwoDigitNumber(int number) {
+  if (number < 10) {
+    return "0" + String(number);
+  }
+  return String(number);
 }
 
 void updateFormattedTime(struct tm* timeStruct) {
-  String formattedTime = convertTwoDigitNumberToString(timeStruct->tm_hour) + ":" +
-                          convertTwoDigitNumberToString(timeStruct->tm_min) + ":" +
-                          convertTwoDigitNumberToString(timeStruct->tm_sec);
+  String formattedTime = formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min) + ":" + formatTwoDigitNumber(timeStruct->tm_sec);
   if (formattedTime != prevFormattedTime) {
     display.setTextColor(BLACK);
     display.setCursor(0, 0);
@@ -70,10 +70,7 @@ void updateFormattedTime(struct tm* timeStruct) {
 }
 
 void updateFormattedDate(struct tm* timeStruct) {
-  String formattedDate = String(DAYS_OF_WEEK[timeStruct->tm_wday]) + " " +
-                          convertTwoDigitNumberToString(timeStruct->tm_mday) + "/" +
-                          convertTwoDigitNumberToString(timeStruct->tm_mon + 1) + "/" +
-                          String(timeStruct->tm_year + 1900);
+  String formattedDate = String(daysOfWeek[timeStruct->tm_wday]) + " " + formatTwoDigitNumber(timeStruct->tm_mday) + "/" + formatTwoDigitNumber(timeStruct->tm_mon + 1) + "/" + String(timeStruct->tm_year + 1900);
   if (formattedDate != prevFormattedDate) {
     display.setTextColor(BLACK);
     display.setCursor(0, 12);
@@ -87,8 +84,7 @@ void updateFormattedDate(struct tm* timeStruct) {
 }
 
 void updateLastNTPSync(struct tm* timeStruct) {
-  String lastSync = "NTP sync: " + convertTwoDigitNumberToString(timeStruct->tm_hour) + ":" +
-                     convertTwoDigitNumberToString(timeStruct->tm_min);
+  String lastSync = "NTP sync: " + formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min);
   if (lastSync != prevLastSync) {
     display.setTextColor(BLACK);
     display.setCursor(0, 24);
@@ -103,7 +99,8 @@ void updateLastNTPSync(struct tm* timeStruct) {
 
 void updateMoonIllumination() {
   moonPhase moonPhaseInstance;
-  moonData_t moon = moonPhaseInstance.getPhase();
+  time_t currentTime = timeClient.getEpochTime(); // Get the current timestamp
+  moonData_t moon = moonPhaseInstance.getPhase(currentTime); // Pass the timestamp to the getPhase function
   String moonIllumination = "Moon lit: " + String(moon.percentLit * 100, 1) + "%";
 
   if (moonIllumination != prevMoonIllumination) {
@@ -121,20 +118,18 @@ void updateMoonIllumination() {
 void updateNextFullMoon() {
   moonPhase moonPhaseInstance;
   time_t currentTime = timeClient.getEpochTime();
-
-  // Search for next Full Moon iteratively
   time_t nextFullMoonTimestamp = currentTime;
+
   while (true) {
     moonData_t moonData = moonPhaseInstance.getPhase(nextFullMoonTimestamp);
     if (moonData.percentLit >= 0.99) {
       break;
     }
-    nextFullMoonTimestamp += 86400; // Add one day in seconds (86400 seconds = 1 day)
+    nextFullMoonTimestamp += 86400; // Add one day (86400 seconds)
   }
 
   struct tm* nextFullMoonStruct = localtime(&nextFullMoonTimestamp);
-  String nextFullMoon = "Full moon: " + convertTwoDigitNumberToString(nextFullMoonStruct->tm_mday) + "/" +
-                         convertTwoDigitNumberToString(nextFullMoonStruct->tm_mon + 1);
+  String nextFullMoon = "Full moon: " + formatTwoDigitNumber(nextFullMoonStruct->tm_mday) + "/" + formatTwoDigitNumber(nextFullMoonStruct->tm_mon + 1);
 
   if (nextFullMoon != prevNextFullMoon) {
     display.setTextColor(BLACK);
@@ -148,27 +143,33 @@ void updateNextFullMoon() {
   }
 }
 
+
+
 void updateClock() {
-  // Update UTC time using NTP server
   timeClient.update();
+
   time_t currentTime = timeClient.getEpochTime();
   struct tm* timeStruct = localtime(&currentTime);
 
-  // Update LCD screen with current time, date, and other info
   updateFormattedTime(timeStruct);
   updateFormattedDate(timeStruct);
-  updateLastNTPSync(timeStruct);
+  if (ntpSynced) { // Add this line
+    updateLastNTPSync(timeStruct);
+    ntpSynced = false; // Reset the flag
+  }
   updateMoonIllumination();
 
-  // Force NTP update at sync interval and update full moon status
-  if (millis() - lastSyncTime > SYNC_INTERVAL) {
+  if (millis() - lastSyncTime > syncInterval) {
     timeClient.forceUpdate();
     currentTime = timeClient.getEpochTime();
     timeStruct = localtime(&currentTime);
     lastSyncTime = millis();
-    updateNextFullMoon(); // Add this line
+    ntpSynced = true; // Set the flag to true when NTP sync occurs
+    updateNextFullMoon();
   }
 }
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -185,21 +186,20 @@ void setup() {
   Serial.println("WiFi connected");
 
   // Initialize display
-  initializeDisplay();
+  initDisplay();
 
   // Initialize time client
   timeClient.begin();
   timeClient.setTimeOffset(2 * 60 * 60); // Set time offset to GMT+2
-  
+
   // Force initial update and set prevLastSync
   timeClient.forceUpdate();
   time_t currentTime = timeClient.getEpochTime();
   struct tm* timeStruct = localtime(&currentTime);
-  prevLastSync = "NTP sync: " + convertTwoDigitNumberToString(timeStruct->tm_hour) + ":" +
-                  convertTwoDigitNumberToString(timeStruct->tm_min);
+  prevLastSync = "NTP sync: " + formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min);
   updateNextFullMoon();
 
-  // Display NTP sync immediately after initialization
+  // Display the third line immediately after the first NTP sync
   display.setTextColor(LESS_BRIGHT_CYAN);
   display.setCursor(0, 24);
   display.print(prevLastSync);
@@ -208,7 +208,6 @@ void setup() {
 }
 
 void loop() {
-  // Loop through updates
   updateClock();
   delay(100);
 }
