@@ -23,8 +23,8 @@ const uint16_t PURPLE             = 0x780F;
 Adafruit_SSD1331 display(CS, DC, MOSI, SCLK, RST);
 
 // WiFi network information
-const char* ssid = "<WiFi_Network_Name>";
-const char* password = "<WiFi_Password>";
+const char* ssid = "KooZoo";
+const char* password = "katrinzrk";
 
 // Time sync via NTP
 WiFiUDP ntpUDP;
