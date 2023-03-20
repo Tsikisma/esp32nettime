@@ -1,214 +1,72 @@
-#include <WiFi.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1331.h>
 #include <SPI.h>
-#include <moonPhase.h>
 
-#define sclk 18
-#define mosi 23
-#define cs   17
-#define rst  4
-#define dc   16
+#define CLOCK_PIN         18
+#define DATA_PIN          23
+#define CHIP_SELECT_PIN   17
+#define RESET_PIN         4
+#define DATA_COMMAND_PIN  16
 
 // Color definitions
-#define RED       0xF800
-#define GREEN     0x07E0
-#define LESS_BRIGHT_CYAN 0x03FF
-#define YELLOW    0xFFE0
-#define BLACK     0x0000
-#define PURPLE    0x780F
-String prevNextFullMoon = "";
+#define YELLOW           0xFFE0
+#define BITMAP_WIDTH     32
+#define BITMAP_HEIGHT    32
 
-Adafruit_SSD1331 display = Adafruit_SSD1331(cs, dc, mosi, sclk, rst);
+const unsigned char epd_bitmap_Bitmap [] PROGMEM = {
+	// 'waning_crescent2, 32x32px
+	0x00, 0xf8, 0x1f, 0x00, 0x00, 0xfe, 0x7f, 0x00, 0x80, 0xff, 0xff, 0x01, 0xc0, 0xff, 0x3f, 0x03, 
+	0xe0, 0xff, 0x1f, 0x06, 0xf0, 0xff, 0x0f, 0x0c, 0xf8, 0xff, 0x07, 0x18, 0xfc, 0xff, 0x07, 0x30, 
+	0xfc, 0xff, 0x03, 0x20, 0xfe, 0xff, 0x01, 0x60, 0xfe, 0xff, 0x01, 0x40, 0xff, 0xff, 0x01, 0xc0, 
+	0xff, 0xff, 0x00, 0xc0, 0xff, 0xff, 0x00, 0x80, 0xff, 0xff, 0x00, 0x80, 0xff, 0xff, 0x00, 0x80, 
+	0xff, 0xff, 0x00, 0x80, 0xff, 0xff, 0x00, 0x80, 0xff, 0xff, 0x00, 0x80, 0xff, 0xff, 0x00, 0xc0, 
+	0xff, 0xff, 0x01, 0xc0, 0xfe, 0xff, 0x01, 0x40, 0xfe, 0xff, 0x01, 0x60, 0xfc, 0xff, 0x03, 0x20, 
+	0xfc, 0xff, 0x03, 0x30, 0xf8, 0xff, 0x07, 0x18, 0xf0, 0xff, 0x0f, 0x08, 0xe0, 0xff, 0x1f, 0x06, 
+	0xc0, 0xff, 0x3f, 0x03, 0x80, 0xff, 0xff, 0x01, 0x00, 0xfe, 0x7f, 0x00, 0x00, 0xf8, 0x1f, 0x00
+};
 
-const char* ssid = "KooZoo";
-const char* password = "katrinzrk";
 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP);
-
-unsigned long lastSyncTime = 0;
-const unsigned long syncInterval = 600000; // Sync interval (10 minutes)
-
-bool ntpSynced = false;
-
-String prevFormattedTime = "";
-String prevFormattedDate = "";
-String prevLastSync = "";
-String prevMoonIllumination = "";
-
-const char* daysOfWeek[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+Adafruit_SSD1331 display = Adafruit_SSD1331(CHIP_SELECT_PIN, DATA_COMMAND_PIN, DATA_PIN, CLOCK_PIN, RESET_PIN);
 
 void initDisplay() {
+  //Initialize display settings.
   display.begin();
-  display.fillScreen(BLACK);
+  display.fillScreen(0);
   display.setTextSize(1);
   display.setTextWrap(false);
 }
 
-String formatTwoDigitNumber(int number) {
-  if (number < 10) {
-    return "0" + String(number);
-  }
-  return String(number);
-}
+void displayBitmap(int16_t x, int16_t y, const uint8_t *bitmap, int16_t w, int16_t h, uint16_t color) {
+  int16_t byteWidth = (w + 7) / 8; // Width of bitmap in bytes before padding
+  uint8_t byte = 0;
 
-void updateFormattedTime(struct tm* timeStruct) {
-  String formattedTime = formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min) + ":" + formatTwoDigitNumber(timeStruct->tm_sec);
-  if (formattedTime != prevFormattedTime) {
-    display.setTextColor(BLACK);
-    display.setCursor(0, 0);
-    display.print(prevFormattedTime);
-
-    display.setTextColor(RED);
-    display.setCursor(0, 0);
-    display.print(formattedTime);
-    prevFormattedTime = formattedTime;
-  }
-}
-
-void updateFormattedDate(struct tm* timeStruct) {
-  String formattedDate = String(daysOfWeek[timeStruct->tm_wday]) + " " + formatTwoDigitNumber(timeStruct->tm_mday) + "/" + formatTwoDigitNumber(timeStruct->tm_mon + 1) + "/" + String(timeStruct->tm_year + 1900);
-  if (formattedDate != prevFormattedDate) {
-    display.setTextColor(BLACK);
-    display.setCursor(0, 12);
-    display.print(prevFormattedDate);
-
-    display.setTextColor(GREEN);
-    display.setCursor(0, 12);
-    display.print(formattedDate);
-    prevFormattedDate = formattedDate;
-  }
-}
-
-void updateLastNTPSync(struct tm* timeStruct) {
-  String lastSync = "NTP sync: " + formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min);
-  if (lastSync != prevLastSync) {
-    display.setTextColor(BLACK);
-    display.setCursor(0, 24);
-    display.print(prevLastSync);
-
-    display.setTextColor(LESS_BRIGHT_CYAN);
-    display.setCursor(0, 24);
-    display.print(lastSync);
-    prevLastSync = lastSync;
-  }
-}
-
-void updateMoonIllumination() {
-  moonPhase moonPhaseInstance;
-  time_t currentTime = timeClient.getEpochTime(); // Get the current timestamp
-  moonData_t moon = moonPhaseInstance.getPhase(currentTime); // Pass the timestamp to the getPhase function
-  String moonIllumination = "Moon lit: " + String(moon.percentLit * 100, 2) + "%"; // Change the second argument to 2
-
-  if (moonIllumination != prevMoonIllumination) {
-    display.setTextColor(BLACK);
-    display.setCursor(0, 36);
-    display.print(prevMoonIllumination);
-
-    display.setTextColor(YELLOW);
-    display.setCursor(0, 36);
-    display.print(moonIllumination);
-    prevMoonIllumination = moonIllumination;
-  }
-}
-
-
-void updateNextFullMoon() {
-  moonPhase moonPhaseInstance;
-  time_t currentTime = timeClient.getEpochTime();
-  time_t nextFullMoonTimestamp = currentTime;
-
-  while (true) {
-    moonData_t moonData = moonPhaseInstance.getPhase(nextFullMoonTimestamp);
-    if (moonData.percentLit >= 0.99) {
-      break;
+  for (int16_t j = 0; j < h; j++) {
+    for (int16_t i = 0; i < w; i++ ) {
+      if (i & 7) {
+        byte >>= 1;
+      }
+      else {
+        byte = pgm_read_byte(bitmap + j * byteWidth + i / 8);
+      }
+      // Draw the pixel when we get to the end of a byte
+      if (byte & 0x01) {
+        display.drawPixel(x+i, y+j, color);
+      }
     }
-    nextFullMoonTimestamp += 86400; // Add one day (86400 seconds)
-  }
-
-  struct tm* nextFullMoonStruct = localtime(&nextFullMoonTimestamp);
-  String nextFullMoon = "Full moon: " + formatTwoDigitNumber(nextFullMoonStruct->tm_mday) + "/" + formatTwoDigitNumber(nextFullMoonStruct->tm_mon + 1);
-
-  if (nextFullMoon != prevNextFullMoon) {
-    display.setTextColor(BLACK);
-    display.setCursor(0, 48);
-    display.print(prevNextFullMoon);
-
-    display.setTextColor(PURPLE);
-    display.setCursor(0, 48);
-    display.print(nextFullMoon);
-    prevNextFullMoon = nextFullMoon;
   }
 }
-
-
-
-void updateClock() {
-  timeClient.update();
-
-  time_t currentTime = timeClient.getEpochTime();
-  struct tm* timeStruct = localtime(&currentTime);
-
-  updateFormattedTime(timeStruct);
-  updateFormattedDate(timeStruct);
-  if (ntpSynced) { // Add this line
-    updateLastNTPSync(timeStruct);
-    ntpSynced = false; // Reset the flag
-  }
-  updateMoonIllumination();
-
-  if (millis() - lastSyncTime > syncInterval) {
-    timeClient.forceUpdate();
-    currentTime = timeClient.getEpochTime();
-    timeStruct = localtime(&currentTime);
-    lastSyncTime = millis();
-    ntpSynced = true; // Set the flag to true when NTP sync occurs
-    updateNextFullMoon();
-  }
-}
-
 
 
 void setup() {
-  Serial.begin(115200);
-
-  // Connect to Wi-Fi
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("WiFi connected");
-
-  // Initialize display
   initDisplay();
 
-  // Initialize time client
-  timeClient.begin();
-  timeClient.setTimeOffset(2 * 60 * 60); // Set time offset to GMT+2
+  int16_t xPos = (display.width() - BITMAP_WIDTH) / 2;
+  int16_t yPos = (display.height() - BITMAP_HEIGHT) / 2;
 
-  // Force initial update and set prevLastSync
-  timeClient.forceUpdate();
-  time_t currentTime = timeClient.getEpochTime();
-  struct tm* timeStruct = localtime(&currentTime);
-  prevLastSync = "NTP sync: " + formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min);
-  updateNextFullMoon();
+  displayBitmap(xPos, yPos, epd_bitmap_Bitmap, BITMAP_WIDTH, BITMAP_HEIGHT, YELLOW);
 
-  // Display the third line immediately after the first NTP sync
-  display.setTextColor(LESS_BRIGHT_CYAN);
-  display.setCursor(0, 24);
-  display.print(prevLastSync);
-
-  lastSyncTime = millis();
 }
 
 void loop() {
-  updateClock();
-  delay(100);
+  // Nothing to do in the loop
 }
