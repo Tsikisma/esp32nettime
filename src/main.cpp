@@ -6,11 +6,12 @@
 #include <SPI.h>
 #include <moonPhase.h>
 
-#define sclk 18
-#define mosi 23
-#define cs   17
-#define rst  4
-#define dc   16
+// Pin definitions
+#define SCLK 18
+#define MOSI 23
+#define CS   17
+#define RST  4
+#define DC   16
 
 // Color definitions
 #define RED       0xF800
@@ -19,13 +20,13 @@
 #define YELLOW    0xFFE0
 #define BLACK     0x0000
 #define PURPLE    0x780F
-String prevNextFullMoon = "";
 
-Adafruit_SSD1331 display = Adafruit_SSD1331(cs, dc, mosi, sclk, rst);
-
+// Wi-Fi credentials
 const char* ssid = "KooZoo";
 const char* password = "katrinzrk";
 
+// Objects and variables
+Adafruit_SSD1331 display = Adafruit_SSD1331(CS, DC, MOSI, SCLK, RST);
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
@@ -38,6 +39,7 @@ String prevFormattedTime = "";
 String prevFormattedDate = "";
 String prevLastSync = "";
 String prevMoonIllumination = "";
+String prevNextFullMoon = "";
 
 const char* daysOfWeek[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
@@ -61,7 +63,6 @@ void updateFormattedTime(struct tm* timeStruct) {
     display.setTextColor(BLACK);
     display.setCursor(0, 0);
     display.print(prevFormattedTime);
-
     display.setTextColor(RED);
     display.setCursor(0, 0);
     display.print(formattedTime);
@@ -75,7 +76,6 @@ void updateFormattedDate(struct tm* timeStruct) {
     display.setTextColor(BLACK);
     display.setCursor(0, 12);
     display.print(prevFormattedDate);
-
     display.setTextColor(GREEN);
     display.setCursor(0, 12);
     display.print(formattedDate);
@@ -89,7 +89,6 @@ void updateLastNTPSync(struct tm* timeStruct) {
     display.setTextColor(BLACK);
     display.setCursor(0, 24);
     display.print(prevLastSync);
-
     display.setTextColor(LESS_BRIGHT_CYAN);
     display.setCursor(0, 24);
     display.print(lastSync);
@@ -107,14 +106,12 @@ void updateMoonIllumination() {
     display.setTextColor(BLACK);
     display.setCursor(0, 36);
     display.print(prevMoonIllumination);
-
     display.setTextColor(YELLOW);
     display.setCursor(0, 36);
     display.print(moonIllumination);
     prevMoonIllumination = moonIllumination;
   }
 }
-
 
 void updateNextFullMoon() {
   moonPhase moonPhaseInstance;
@@ -136,7 +133,6 @@ void updateNextFullMoon() {
     display.setTextColor(BLACK);
     display.setCursor(0, 48);
     display.print(prevNextFullMoon);
-
     display.setTextColor(PURPLE);
     display.setCursor(0, 48);
     display.print(nextFullMoon);
@@ -144,8 +140,10 @@ void updateNextFullMoon() {
   }
 }
 
-
-
+/**
+   Update the clock display including time, date, last NTP sync, moon illumination,
+   and next full moon.
+*/
 void updateClock() {
   timeClient.update();
 
@@ -154,7 +152,7 @@ void updateClock() {
 
   updateFormattedTime(timeStruct);
   updateFormattedDate(timeStruct);
-  if (ntpSynced) { // Add this line
+  if (ntpSynced) { // Only update after NTP sync occurs
     updateLastNTPSync(timeStruct);
     ntpSynced = false; // Reset the flag
   }
@@ -170,8 +168,9 @@ void updateClock() {
   }
 }
 
-
-
+/**
+   Connect to Wi-Fi and set up initial state of the display.
+*/
 void setup() {
   Serial.begin(115200);
 
@@ -208,6 +207,9 @@ void setup() {
   lastSyncTime = millis();
 }
 
+/**
+   Updates the clock display at a regular 100ms interval.
+*/
 void loop() {
   updateClock();
   delay(100);
