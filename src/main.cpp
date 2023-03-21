@@ -158,7 +158,6 @@ void updateClock() {
     updateLastNTPSync(timeStruct);
     ntpSynced = false; // Reset the flag
   }
-  updateMoonIllumination();
 
   if (millis() - lastSyncTime > syncInterval) {
     timeClient.forceUpdate();
@@ -172,21 +171,22 @@ void updateClock() {
 
 void displaySlide2() {
   if (!slide2Drawn) {
+    updateNextFullMoon();
+    updateMoonIllumination(); // Add this line to update the moon illumination information when slide 2 is displayed for the first time
+
     display.fillScreen(BLACK);
+
     display.setTextColor(YELLOW);
-    display.setTextSize(1);
-    
-    String helloWorldText = "Hello world";
-    int textWidth = 6 * helloWorldText.length(); // Each character in the default font size 1 is 6 pixels wide
-    int textHeight = 8; // The default font size 1 has a height of 8 pixels
-    
-    display.setCursor((display.width() - textWidth) / 2, (display.height() - textHeight) / 2);
-    display.print(helloWorldText);
+    display.setCursor(0, 36);
+    display.print(prevMoonIllumination);
+
+    display.setTextColor(PURPLE);
+    display.setCursor(0, 48);
+    display.print(prevNextFullMoon);
+
     slide2Drawn = true;
   }
 }
-
-
 
 
 void redrawSlide1() {
@@ -203,16 +203,9 @@ void redrawSlide1() {
   display.setCursor(0, 24);
   display.print(prevLastSync);
 
-  display.setTextColor(YELLOW);
-  display.setCursor(0, 36);
-  display.print(prevMoonIllumination);
-
-  display.setTextColor(PURPLE);
-  display.setCursor(0, 48);
-  display.print(prevNextFullMoon);
-
   redrawSlide1Required = false;
 }
+
 
 /**
    Connect to Wi-Fi and set up initial state of the display.
@@ -243,7 +236,6 @@ void setup() {
   time_t currentTime = timeClient.getEpochTime();
   struct tm* timeStruct = localtime(&currentTime);
   prevLastSync = "NTP sync: " + formatTwoDigitNumber(timeStruct->tm_hour) + ":" + formatTwoDigitNumber(timeStruct->tm_min);
-  updateNextFullMoon();
 
   // Display the third line immediately after the first NTP sync
   display.setTextColor(LESS_BRIGHT_CYAN);
