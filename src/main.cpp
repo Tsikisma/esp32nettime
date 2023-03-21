@@ -34,6 +34,8 @@ unsigned long lastSyncTime = 0;
 const unsigned long syncInterval = 600000; // Sync interval (10 minutes)
 
 bool ntpSynced = false;
+bool redrawSlide1Required = false;
+bool slide2Drawn = false;
 
 String prevFormattedTime = "";
 String prevFormattedDate = "";
@@ -168,6 +170,50 @@ void updateClock() {
   }
 }
 
+void displaySlide2() {
+  if (!slide2Drawn) {
+    display.fillScreen(BLACK);
+    display.setTextColor(YELLOW);
+    display.setTextSize(1);
+    
+    String helloWorldText = "Hello world";
+    int textWidth = 6 * helloWorldText.length(); // Each character in the default font size 1 is 6 pixels wide
+    int textHeight = 8; // The default font size 1 has a height of 8 pixels
+    
+    display.setCursor((display.width() - textWidth) / 2, (display.height() - textHeight) / 2);
+    display.print(helloWorldText);
+    slide2Drawn = true;
+  }
+}
+
+
+
+
+void redrawSlide1() {
+  display.fillScreen(BLACK);
+  display.setTextColor(RED);
+  display.setCursor(0, 0);
+  display.print(prevFormattedTime);
+
+  display.setTextColor(GREEN);
+  display.setCursor(0, 12);
+  display.print(prevFormattedDate);
+
+  display.setTextColor(LESS_BRIGHT_CYAN);
+  display.setCursor(0, 24);
+  display.print(prevLastSync);
+
+  display.setTextColor(YELLOW);
+  display.setCursor(0, 36);
+  display.print(prevMoonIllumination);
+
+  display.setTextColor(PURPLE);
+  display.setCursor(0, 48);
+  display.print(prevNextFullMoon);
+
+  redrawSlide1Required = false;
+}
+
 /**
    Connect to Wi-Fi and set up initial state of the display.
 */
@@ -211,6 +257,24 @@ void setup() {
    Updates the clock display at a regular 100ms interval.
 */
 void loop() {
-  updateClock();
+  static unsigned long lastSlideChange = 0;
+  static bool slide1 = true;
+
+  if (millis() - lastSlideChange >= 10000) {
+    slide1 = !slide1;
+    lastSlideChange = millis();
+    if (slide1) {
+      redrawSlide1();
+    } else {
+      slide2Drawn = false;
+    }
+  }
+
+  if (slide1) {
+    updateClock();
+  } else {
+    displaySlide2();
+  }
+  
   delay(100);
 }
